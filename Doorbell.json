@@ -1,8 +1,9 @@
 {
   "Author": "SoyaX",
   "Name": "Doorbell",
+  "RepoUrl": "https://github.com/SoyaX/Doorbell",
   "Punchline": "Play a chime when someone comes into a house.",
-  "Description": "",
+  "Description": "Play a chime when someone comes into a house, when they leave or when entering a house people are already inside.\n\nIcon by Flaticon",
   "InternalName": "Doorbell",
   "ApplicableVersion": "any"
 }
