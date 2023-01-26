@@ -88,7 +88,7 @@ public sealed class Plugin : IDalamudPlugin {
         }
 
         // Check for new people
-        foreach (var o in Objects.Take(200).Where(o => o is PlayerCharacter)) {
+        foreach (var o in Objects.Where(o => o is PlayerCharacter && o.ObjectIndex is < 200 and > 0)) {
             if (!KnownObjects.ContainsKey(o.ObjectId)) {
                 KnownObjects.Add(o.ObjectId, new PlayerObject() {
                     Name = o.Name.TextValue
