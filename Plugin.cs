@@ -7,6 +7,7 @@ using Dalamud.Game;
 using Dalamud.Game.ClientState;
 using Dalamud.Game.ClientState.Objects;
 using Dalamud.Game.ClientState.Objects.SubKinds;
+using Dalamud.Game.Command;
 using Dalamud.Game.Gui;
 using Dalamud.Interface.ImGuiFileDialog;
 using Dalamud.Interface.Windowing;
@@ -26,6 +27,7 @@ public sealed class Plugin : IDalamudPlugin {
     [PluginService] public static ClientState ClientState { get; private set; } = null!;
     [PluginService] public static ObjectTable Objects { get; private set; } = null!;
     [PluginService] public static ChatGui Chat { get; private set; } = null!;
+    [PluginService] public static CommandManager CommandManager { get; private set; } = null!;
     public static FileDialogManager FileDialogManager { get; } = new();
 
     private ConfigWindow configWindow = new($"{Name} Config");
@@ -35,7 +37,7 @@ public sealed class Plugin : IDalamudPlugin {
         Config = (Config) (PluginInterface.GetPluginConfig() ?? new Config());
         ClientState.TerritoryChanged += OnTerritoryChanged;
         PluginInterface.UiBuilder.OpenConfigUi += ToggleConfigWindow;
-        
+        CommandManager.AddHandler("/doorbell", new CommandInfo((_, _) => configWindow.Toggle()) { ShowInHelp = true, HelpMessage = $"Toggle the {Name} config window." });
         windowSystem = new WindowSystem(Name);
         windowSystem.AddWindow(configWindow);
         PluginInterface.UiBuilder.Draw += windowSystem.Draw;
@@ -110,7 +112,7 @@ public sealed class Plugin : IDalamudPlugin {
     public void Dispose() {
         Framework.Update -= OnFrameworkUpdate;
         ClientState.TerritoryChanged -= OnTerritoryChanged;
-        
+        CommandManager.RemoveHandler("/doorbell");
         Config.Entered.DisposeSound();
         Config.Left.DisposeSound();
         Config.AlreadyHere.DisposeSound();
