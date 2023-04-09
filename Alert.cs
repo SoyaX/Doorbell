@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Threading.Tasks;
 using Dalamud.Game.Text;
 using Dalamud.Logging;
 using NAudio.Wave;
@@ -14,8 +15,8 @@ public class Alert {
     public bool SoundEnabled = false;
     public string SoundFile = string.Empty;
     public float SoundVolume = 1;
-    
-    [JsonIgnore] private AudioFileReader? audioFile;
+
+    [JsonIgnore] private WaveStream? audioFile;
     [JsonIgnore] private WaveOutEvent? audioEvent;
 
     public void DoAlert(string name) {
@@ -38,11 +39,13 @@ public class Alert {
     
     public void PlaySound() {
         if (!SoundEnabled) return;
-        if (audioFile == null || audioEvent == null) SetupSound();
-        if (audioFile == null || audioEvent == null) return;
-        audioEvent.Stop();
-        audioFile.Position = 0;
-        audioEvent.Play();
+        Task.Run(() => {
+            if (audioFile == null || audioEvent == null) SetupSound();
+            if (audioFile == null || audioEvent == null) return;
+            audioEvent.Stop();
+            audioFile.Position = 0;
+            audioEvent.Play();
+        });
     }
 
     public void SetupSound() {
@@ -53,13 +56,21 @@ public class Alert {
             if (string.IsNullOrWhiteSpace(file)) 
                 file = Path.Join(Plugin.PluginInterface.AssemblyLocation.Directory!.FullName, "doorbell.wav");
 
+            if (file.IsHttpUrl()) {
+                audioFile = new MediaFoundationReader(file);
+                audioEvent = new WaveOutEvent();
+                audioEvent.Volume = MathF.Max(0, MathF.Min(1, SoundVolume));
+                audioEvent.Init(audioFile);
+                return;
+            }
+
             if (!File.Exists(file)) {
                 PluginLog.Warning($"{file} does not exist.");
                 return;
             }
-            
+
             audioFile = new AudioFileReader(file);
-            audioFile.Volume = SoundVolume;
+            (audioFile as AudioFileReader)!.Volume = SoundVolume;
             audioEvent = new WaveOutEvent();
             audioEvent.Init(audioFile);
         } catch (Exception ex) {

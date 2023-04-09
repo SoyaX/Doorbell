@@ -8,11 +8,10 @@ using Dalamud.Game.ClientState;
 using Dalamud.Game.ClientState.Objects;
 using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Game.Gui;
+using Dalamud.Interface.ImGuiFileDialog;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
-using Dalamud.Logging;
 using Dalamud.Plugin;
-using NAudio.Wave;
 
 namespace Doorbell;
 
@@ -27,6 +26,7 @@ public sealed class Plugin : IDalamudPlugin {
     [PluginService] public static ClientState ClientState { get; private set; } = null!;
     [PluginService] public static ObjectTable Objects { get; private set; } = null!;
     [PluginService] public static ChatGui Chat { get; private set; } = null!;
+    public static FileDialogManager FileDialogManager { get; } = new();
 
     private ConfigWindow configWindow = new($"{Name} Config");
     private WindowSystem windowSystem;
@@ -39,6 +39,7 @@ public sealed class Plugin : IDalamudPlugin {
         windowSystem = new WindowSystem(Name);
         windowSystem.AddWindow(configWindow);
         PluginInterface.UiBuilder.Draw += windowSystem.Draw;
+        PluginInterface.UiBuilder.Draw += FileDialogManager.Draw;
         
         OnTerritoryChanged(null, ClientState.TerritoryType);
     }
@@ -113,5 +114,6 @@ public sealed class Plugin : IDalamudPlugin {
         Config.Entered.DisposeSound();
         Config.Left.DisposeSound();
         Config.AlreadyHere.DisposeSound();
+        FileDialogManager.Reset();
     }
 }
