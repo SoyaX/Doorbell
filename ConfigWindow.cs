@@ -1,5 +1,8 @@
 ﻿using System;
+using System.Linq;
+using System.Numerics;
 using Dalamud.Interface;
+using Dalamud.Interface.Colors;
 using Dalamud.Interface.Components;
 using Dalamud.Interface.Windowing;
 using ImGuiNET;
@@ -12,7 +15,6 @@ public class ConfigWindow : Window {
     }
 
     private void DrawAlertConfig(Alert alert) {
-
         ImGui.Checkbox("Play a Sound", ref alert.SoundEnabled);
 
         if (alert.SoundEnabled) {
@@ -61,7 +63,33 @@ public class ConfigWindow : Window {
         ImGui.Unindent();
     }
     
+    private int silenceMinutesSlider;
     public override void Draw() {
+        if (Plugin.Silenced) {
+            ImGui.PushStyleColor(ImGuiCol.FrameBg, ImGui.ColorConvertFloat4ToU32(ImGuiColors.DalamudRed) & 0x55FFFFFF);
+            ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X);
+            var timeRemaining = (Plugin.SilenceTimeSpan == null ? TimeSpan.Zero : Plugin.SilenceTimeSpan - Plugin.SilencedFor.Elapsed).Value;
+            var str = string.Join(':', new[] { timeRemaining.Days, timeRemaining.Hours, timeRemaining.Minutes, timeRemaining.Seconds }.Select(i => $"{i:00}")).TrimStart('0', ':');
+            ImGui.DragInt("##silenceMinutes", ref silenceMinutesSlider, 0, 0, 0, Plugin.SilenceTimeSpan == null ? "Silenced until leaving a house." : $"Silenced for {str}", ImGuiSliderFlags.NoInput);
+            ImGui.PopStyleColor();
+            if (ImGui.Button("Unsilence Doorbell", new Vector2(ImGui.GetContentRegionAvail().X, 24 * ImGuiHelpers.GlobalScale))) {
+                Plugin.UnSilence();
+            }
+        } else {
+            ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X);
+            var timeSpan = TimeSpan.FromMinutes(silenceMinutesSlider);
+            var str = string.Join(':', new[] { timeSpan.Days, timeSpan.Hours, timeSpan.Minutes, timeSpan.Seconds }.Select(i => $"{i:00}")).TrimStart('0', ':');
+            ImGui.SliderInt("##silenceMinutes", ref silenceMinutesSlider, 0, Math.Max(60, silenceMinutesSlider + 1), silenceMinutesSlider <= 0 ? "Until leaving a house," : $"For {str},", ImGuiSliderFlags.NoInput);
+            if (ImGui.Button("Silence Doorbell", new Vector2(ImGui.GetContentRegionAvail().X, 24 * ImGuiHelpers.GlobalScale))) {
+                if (silenceMinutesSlider <= 0) {
+                    Plugin.Silence();
+                } else {
+                    Plugin.Silence(TimeSpan.FromMinutes(silenceMinutesSlider));
+                }
+            }
+        }
+
+        ImGui.Separator();
         ImGui.PushID("Doorbell_Config_Entered");;
         ImGui.Text("When a player enters a house: ");
         ImGui.Indent();

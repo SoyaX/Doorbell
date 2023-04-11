@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using Dalamud.Game;
 using Dalamud.Game.ClientState;
@@ -33,17 +32,60 @@ public sealed class Plugin : IDalamudPlugin {
     private ConfigWindow configWindow = new($"{Name} Config");
     private WindowSystem windowSystem;
 
+    internal static bool Silenced { get; private set; }
+    internal static Stopwatch SilencedFor { get; } = new();
+    internal static TimeSpan? SilenceTimeSpan { get; private set; } = new();
+
     public Plugin() {
         Config = (Config) (PluginInterface.GetPluginConfig() ?? new Config());
         ClientState.TerritoryChanged += OnTerritoryChanged;
         PluginInterface.UiBuilder.OpenConfigUi += ToggleConfigWindow;
-        CommandManager.AddHandler("/doorbell", new CommandInfo((_, _) => configWindow.Toggle()) { ShowInHelp = true, HelpMessage = $"Toggle the {Name} config window." });
+        CommandManager.AddHandler("/doorbell", new CommandInfo(HandleCommand) { ShowInHelp = true, HelpMessage = $"Toggle the {Name} config window." });
+        CommandManager.AddHandler("/doorbell silence", new CommandInfo(HandleCommand) { ShowInHelp = true, HelpMessage = $"Disable alerts until leaving a house."});
+        CommandManager.AddHandler("/doorbell silence #", new CommandInfo(HandleCommand) { ShowInHelp = true, HelpMessage = $"Disable alerts for # minutes." });
         windowSystem = new WindowSystem(Name);
         windowSystem.AddWindow(configWindow);
         PluginInterface.UiBuilder.Draw += windowSystem.Draw;
         PluginInterface.UiBuilder.Draw += FileDialogManager.Draw;
         
         OnTerritoryChanged(null, ClientState.TerritoryType);
+    }
+
+    private void HandleCommand(string command, string arguments) {
+        var args = arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (args.Length == 0) {
+            configWindow.Toggle();
+            return;
+        }
+
+        switch (args[0].ToLower()) {
+            case "silence":
+                if (args.Length == 1) {
+                    if (Silenced) {
+                        UnSilence();
+                    } else {
+                        Silence();
+                    }
+                    return;
+                }
+
+                if (args.Length >= 2 && float.TryParse(args[1], out var minutes) && minutes >= 0) {
+                    if (minutes == 0) {
+                        UnSilence();
+                    } else {
+                        Silence(TimeSpan.FromMinutes(minutes));
+                    }
+
+                    return;
+                }
+                
+                break;
+        }
+        
+        Chat.PrintError("Invalid Doorbell Command - Available Options:");
+        Chat.PrintError("  - /doorbell  - Toggle Config Window");
+        Chat.PrintError("  - /doorbell silence   - Disables Doorbell until you next leave a house.");
+        Chat.PrintError("  - /doorbell silence [minutes]   - Disables Doorbell for a specified number of minutes.");
     }
 
     private void ToggleConfigWindow() {
@@ -74,17 +116,51 @@ public sealed class Plugin : IDalamudPlugin {
         if (HouseTerritoryIds.Contains(territory)) {
             Framework.Update += OnFrameworkUpdate;
             TimeInHouse.Restart();
+        } else if (Silenced && SilenceTimeSpan == null && TimeInHouse.ElapsedMilliseconds > 1000) {
+            UnSilence();
+        }
+    }
+
+    internal static void Silence(TimeSpan? timeSpan = null, bool quiet = false) {
+        Framework.Update -= SilenceCheck;
+        SilencedFor.Restart();
+        SilenceTimeSpan = timeSpan;
+        Silenced = true;
+        if (timeSpan != null) Framework.Update += SilenceCheck;
+        if (quiet) return;
+        if (timeSpan == null) {
+            Chat.Print("Doorbell has been silenced until you next leave a house.");
+        } else {
+            var silenceEnd = DateTime.Now + timeSpan.Value;
+            if (timeSpan.Value.TotalDays >= 0.5f) {
+                Chat.Print($"Doorbell has been silenced until {silenceEnd:g}.");
+            } else {
+                Chat.Print($"Doorbell has been silenced until {silenceEnd:t}.");
+            }
+        }
+    }
+
+    internal static void UnSilence(bool quiet = false) {
+        SilencedFor.Reset();
+        Silenced = false;
+        SilenceTimeSpan = null;
+        Chat.Print("Doorbell has been unsilenced.");
+        Framework.Update -= SilenceCheck;
+    }
+
+    private static void SilenceCheck(Framework framework) {
+        if (Silenced && SilenceTimeSpan != null && SilencedFor.Elapsed > SilenceTimeSpan) {
+            UnSilence();
         }
     }
     
     private void OnFrameworkUpdate(Framework framework) {
-        
         // Check for leavers
         foreach (var o in KnownObjects) {
             o.Value.LastSeen++;
 
             if (o.Value.LastSeen > 60) {
-                Config.Left.DoAlert(o.Value.Name);
+                if (!Silenced) Config.Left.DoAlert(o.Value.Name);
                 KnownObjects.Remove(o.Key);
                 break;
             }
@@ -97,6 +173,7 @@ public sealed class Plugin : IDalamudPlugin {
                     Name = o.Name.TextValue
                 });
                 
+                if (Silenced) continue;
                 if (TimeInHouse.ElapsedMilliseconds > 1000) {
                     Config.Entered.DoAlert(o.Name.TextValue);
                 } else {
@@ -111,8 +188,11 @@ public sealed class Plugin : IDalamudPlugin {
 
     public void Dispose() {
         Framework.Update -= OnFrameworkUpdate;
+        Framework.Update -= SilenceCheck;
         ClientState.TerritoryChanged -= OnTerritoryChanged;
         CommandManager.RemoveHandler("/doorbell");
+        CommandManager.RemoveHandler("/doorbell silence");
+        CommandManager.RemoveHandler("/doorbell silence #");
         Config.Entered.DisposeSound();
         Config.Left.DisposeSound();
         Config.AlreadyHere.DisposeSound();
