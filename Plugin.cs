@@ -2,31 +2,29 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using Dalamud.Game;
-using Dalamud.Game.ClientState;
-using Dalamud.Game.ClientState.Objects;
 using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Game.Command;
-using Dalamud.Game.Gui;
 using Dalamud.Interface.ImGuiFileDialog;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Plugin;
+using Dalamud.Plugin.Services;
 
 namespace Doorbell;
 
 public sealed class Plugin : IDalamudPlugin {
     public static string Name => "Doorbell";
-    string IDalamudPlugin.Name => Name;
 
     public static Config Config { get; set; } = new();
     
     [PluginService] public static DalamudPluginInterface PluginInterface { get; private set; } = null!;
-    [PluginService] public static Framework Framework { get; private set; } = null!;
-    [PluginService] public static ClientState ClientState { get; private set; } = null!;
-    [PluginService] public static ObjectTable Objects { get; private set; } = null!;
-    [PluginService] public static ChatGui Chat { get; private set; } = null!;
-    [PluginService] public static CommandManager CommandManager { get; private set; } = null!;
+    [PluginService] public static IFramework Framework { get; private set; } = null!;
+    [PluginService] public static IClientState ClientState { get; private set; } = null!;
+    [PluginService] public static IObjectTable Objects { get; private set; } = null!;
+    [PluginService] public static IChatGui Chat { get; private set; } = null!;
+    [PluginService] public static ICommandManager CommandManager { get; private set; } = null!;
+    [PluginService] public static IDataManager DataManager { get; private set; } = null!;
+    [PluginService] public static IPluginLog Log { get; private set; } = null!;
     public static FileDialogManager FileDialogManager { get; } = new();
 
     private ConfigWindow configWindow = new($"{Name} Config");
@@ -48,7 +46,7 @@ public sealed class Plugin : IDalamudPlugin {
         PluginInterface.UiBuilder.Draw += windowSystem.Draw;
         PluginInterface.UiBuilder.Draw += FileDialogManager.Draw;
         
-        OnTerritoryChanged(null, ClientState.TerritoryType);
+        OnTerritoryChanged(ClientState.TerritoryType);
     }
 
     private void HandleCommand(string command, string arguments) {
@@ -101,15 +99,10 @@ public sealed class Plugin : IDalamudPlugin {
         980, 981, 982, 983, 999, // Empyreum 
     };
 
-    private class PlayerObject {
-        public uint LastSeen = 0;
-        public string Name = string.Empty;
-    }
-    
     private Dictionary<uint, PlayerObject> KnownObjects = new();
     private Stopwatch TimeInHouse = new();
     
-    private void OnTerritoryChanged(object? sender, ushort territory) {
+    private void OnTerritoryChanged(ushort territory) {
         KnownObjects.Clear();
         TimeInHouse.Stop();
         Framework.Update -= OnFrameworkUpdate;
@@ -148,19 +141,19 @@ public sealed class Plugin : IDalamudPlugin {
         Framework.Update -= SilenceCheck;
     }
 
-    private static void SilenceCheck(Framework framework) {
+    private static void SilenceCheck(IFramework framework) {
         if (Silenced && SilenceTimeSpan != null && SilencedFor.Elapsed > SilenceTimeSpan) {
             UnSilence();
         }
     }
     
-    private void OnFrameworkUpdate(Framework framework) {
+    private void OnFrameworkUpdate(IFramework framework) {
         // Check for leavers
         foreach (var o in KnownObjects) {
             o.Value.LastSeen++;
 
             if (o.Value.LastSeen > 60) {
-                if (!Silenced) Config.Left.DoAlert(o.Value.Name);
+                if (!Silenced) Config.Left.DoAlert(o.Value);
                 KnownObjects.Remove(o.Key);
                 break;
             }
@@ -168,16 +161,16 @@ public sealed class Plugin : IDalamudPlugin {
 
         // Check for new people
         foreach (var o in Objects.Where(o => o is PlayerCharacter && o.ObjectIndex is < 200 and > 0)) {
+            if (o is not PlayerCharacter pc) continue;
             if (!KnownObjects.ContainsKey(o.ObjectId)) {
-                KnownObjects.Add(o.ObjectId, new PlayerObject() {
-                    Name = o.Name.TextValue
-                });
-                
-                if (Silenced) continue;
+                var playerObject = new PlayerObject(pc);
+                KnownObjects.Add(o.ObjectId, playerObject);
+
+                    if (Silenced) continue;
                 if (TimeInHouse.ElapsedMilliseconds > 1000) {
-                    Config.Entered.DoAlert(o.Name.TextValue);
+                    Config.Entered.DoAlert(playerObject);
                 } else {
-                    Config.AlreadyHere.DoAlert(o.Name.TextValue);
+                    Config.AlreadyHere.DoAlert(playerObject);
                 }
             } else {
                 KnownObjects[o.ObjectId].LastSeen = 0;

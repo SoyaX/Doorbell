@@ -1,7 +1,10 @@
 ﻿using System;
 using System.IO;
 using System.Threading.Tasks;
+using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Game.Text;
+using Dalamud.Game.Text.SeStringHandling;
+using Dalamud.Game.Text.SeStringHandling.Payloads;
 using Dalamud.Logging;
 using NAudio.Wave;
 using Newtonsoft.Json;
@@ -19,22 +22,53 @@ public class Alert {
     [JsonIgnore] private WaveStream? audioFile;
     [JsonIgnore] private WaveOutEvent? audioEvent;
 
-    public void DoAlert(string name) {
-        PrintChat(name);
+    public void DoAlert(PlayerObject player) {
+        PrintChat(player);
         PlaySound();
     }
     
-    public void PrintChat(string name) {
+    public void PrintChat(PlayerObject player) {
         if (!ChatEnabled) return;
 
+        var messageBuilder = new SeStringBuilder();
+        messageBuilder.AddText($"[{Plugin.Name}] ");
+        
+        for (var i = 0; i < ChatFormat.Length; i++) {
+            if (ChatFormat[i] == '<') {
+                var tagEnd = ChatFormat.IndexOf('>', i + 1);
+                if (tagEnd > i) {
+                    var tag = ChatFormat.Substring(i, tagEnd - i + 1);
+                    switch (tag) {
+                        case "<name>": {
+                            messageBuilder.AddText(player.Name);
+                            i = tagEnd;
+                            continue;
+                        }
+                        case "<world>": {
+                            messageBuilder.AddText(player.WorldName);
+                            i = tagEnd;
+                            continue;
+                        }
+                        case "<link>": {
+                            messageBuilder.Add(new PlayerPayload(player.Name, player.World));
+                            i = tagEnd;
+                            continue;
+                        }
+                    }
+                }
+            }
+            
+            messageBuilder.AddText($"{ChatFormat[i]}");
+        }
+        
         var chatMessage = $"[{Plugin.Name}] {ChatFormat}"
-            .Replace("<name>", name);
+            .Replace("<name>", player.Name);
         
         var entry = new XivChatEntry() {
-            Message = chatMessage
+            Message = messageBuilder.Build()
         };
         
-        Plugin.Chat.PrintChat(entry);
+        Plugin.Chat.Print(entry);
     }
     
     public void PlaySound() {
@@ -65,7 +99,7 @@ public class Alert {
             }
 
             if (!File.Exists(file)) {
-                PluginLog.Warning($"{file} does not exist.");
+                Plugin.Log.Warning($"{file} does not exist.");
                 return;
             }
 
@@ -74,7 +108,7 @@ public class Alert {
             audioEvent = new WaveOutEvent();
             audioEvent.Init(audioFile);
         } catch (Exception ex) {
-            PluginLog.Error(ex, "Error initalizing sound.");
+            Plugin.Log.Error(ex, "Error initalizing sound.");
         }
     }
 

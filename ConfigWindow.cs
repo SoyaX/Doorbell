@@ -4,6 +4,7 @@ using System.Numerics;
 using Dalamud.Interface;
 using Dalamud.Interface.Colors;
 using Dalamud.Interface.Components;
+using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
 using ImGuiNET;
 
@@ -57,7 +58,11 @@ public class ConfigWindow : Window {
         if (!alert.ChatEnabled) ImGui.BeginDisabled();
         ImGui.InputText("Message", ref alert.ChatFormat, 200);
         if (ImGui.IsItemHovered()) { 
-            ImGui.SetTooltip("Use <name> as a placeholder for the players name.");
+            ImGui.BeginTooltip();
+            ImGui.Text("Use <link> as a placeholder to link to the player.");
+            ImGui.Text("Use <name> as a placeholder for the players name.");
+            ImGui.Text("Use <world> as a placeholder for the players world.");
+            ImGui.EndTooltip();
         }
         if (!alert.ChatEnabled) ImGui.EndDisabled();
         ImGui.Unindent();

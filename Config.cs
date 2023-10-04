@@ -8,19 +8,19 @@ public class Config : IPluginConfiguration {
     public Alert Entered { get; set; } = new() {
         ChatEnabled = true,
         SoundEnabled = true,
-        ChatFormat = "<name> has come inside.",
+        ChatFormat = "<link> has come inside.",
         SoundFile = ""
     };
     
     public Alert Left { get; set; } = new() {
         ChatEnabled = false,
         SoundEnabled = false,
-        ChatFormat = "<name> has left the house."
+        ChatFormat = "<link> has left the house."
     };
     
     public Alert AlreadyHere { get; set; } = new() {
         ChatEnabled = false,
         SoundEnabled = false,
-        ChatFormat = "<name> was here when you arrived."
+        ChatFormat = "<link> was here when you arrived."
     };
 }
